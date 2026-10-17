@@ -1,0 +1,39 @@
+# ===== Python 缓存 =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# ===== pytest / 测试缓存 =====
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ===== 日志 =====
+log/
+*.log
+
+# ===== 测试报告（allure 生成，体积大且每次运行都变）=====
+report/
+allure-report/
+allure-results/
+
+# ===== Excel 临时锁文件（Excel 打开时自动生成）=====
+~$*.xlsx
+
+# ===== PyCharm 个人配置 =====
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ===== 虚拟环境 =====
+venv/
+.venv/
+env/
+
+# ===== 系统垃圾文件 =====
+.DS_Store
+Thumbs.db
+desktop.ini
