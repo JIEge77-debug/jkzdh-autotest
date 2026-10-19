@@ -1,12 +1,11 @@
-import allure
-import jsonpath
-import pymysql
 import pytest
-import requests
 from jinja2 import Template
-
 from utils.allure_utils import allure_test_report_init
+from utils.analyse_case import analyse_case
+from utils.asserts import http_assert, jdbc_assert
 from utils.excel_utils import read_excel
+from utils.extractor import json_extractor, jdbc_extractor
+from utils.send_request import send_http_request
 
 
 class TestRunner:
@@ -31,96 +30,22 @@ class TestRunner:
 
 
         #核心步骤1：解析请求数据
-        method = case["method"]
-        url = "http://192.168.10.131:8888/api/private/v1" + case["path"] #path是最后的后缀
-        headers = eval(case["headers"]) if isinstance(case["headers"],str) else None
-        params = eval(case["params"]) if isinstance(case["params"],str) else None
-        data = eval(case["data"]) if isinstance(case["data"],str) else None
-        json = eval(case["json"]) if isinstance(case["json"],str) else None
-        files = eval(case["files"]) if isinstance(case["files"],str) else None
-
-        request_data = {
-
-            "method": method,
-            "url": url,
-            "headers": headers,
-            "params": params,
-            "data": data,
-            "json": json,
-            "files": files,
-
-        }
+        request_data = analyse_case(case)
 
         #核心步骤2：发起请求，得到相应结果
-        res = requests.request(**request_data)
-        print(res.json())  # 打印响应结果
+        res = send_http_request(**request_data)
+
         #核心步骤3：处理断言
         #http 响应断言
-        if case["check"]:
-            assert jsonpath.jsonpath(res.json(),case["check"])[0] == case["expected"]
-        else:
-            assert case["expected"] in res.text
+        http_assert(case, res)
 
         #数据库断言
+        jdbc_assert(case)
 
-        # print(case["sql_check"])
-        # print(case["sql_expected"])
-        if case["sql_check"] and case["sql_expected"]:
-            #连接
-            conn = pymysql.connect(
-                host="192.168.10.131",
-                port=3306,
-                database="mydb",
-                user="root",
-                password="123456",
-                charset="utf8"
-            )
-
-            #驴+桥
-            cur = conn.cursor()
-            #执行语句
-            cur.execute(case["sql_check"])
-            result = cur.fetchone()
-            #关闭资源
-            cur.close()
-            conn.close()
-            assert result[0] == case["sql_expected"]
 
         #核心步骤4：提取
         # JSON提取的功能
-        if case["jsonExData"]:
-
-            #首先要把 jsonExData 的 key 和 value拆开
-            # 使用eval函数把 case["jsonExData"] 变成字典
-            for key,value in eval(case["jsonExData"]).items():
-                value = jsonpath.jsonpath(res.json(),value)[0]
-                # print(key)
-                # print(value)
-                all[key] = value
-
+        json_extractor(case,all,res)
 
         #数据库的提取
-        if case["sqlExData"]:
-
-            for key, value in eval(case["sqlExData"]).items():
-                # print(value)
-                conn = pymysql.connect(
-                    host="192.168.10.131",
-                    port=3306,
-                    database="mydb",
-                    user="root",
-                    password="123456",
-                    charset="utf8"
-                )
-
-                # 驴+桥
-                cur = conn.cursor()
-                # 执行语句
-                cur.execute(value)
-                result = cur.fetchone()
-                # 关闭资源
-                cur.close()
-                conn.close()
-                value = result[0]
-                # print(value)
-                all[key] = value
+        jdbc_extractor(case,all)
