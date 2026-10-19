@@ -40,15 +40,36 @@
 ├── file/
 │   └── banana.jpg             # 文件上传用例的测试素材
 ├── testcases/
-│   └── test_runner.py         # 用例执行引擎（框架核心）
+│   └── test_runner.py         # 用例执行引擎：编排整条流水线
 ├── utils/
-│   ├── excel_utils.py         # Excel 读取，转成 list[dict]
-│   └── allure_utils.py        # Allure 报告装饰（feature / story / title）
-├── demo.py                    # 文件上传接口的独立示例脚本
+│   ├── excel_utils.py         # read_excel()          读取 Excel → list[dict]
+│   ├── analyse_case.py        # analyse_case()        拼装请求参数
+│   ├── send_request.py        # send_http_request()   发送 HTTP 请求
+│   │                          # send_jdbc_request()   执行 SQL 查询
+│   ├── asserts.py             # http_assert()         HTTP 响应断言
+│   │                          # jdbc_assert()         数据库断言
+│   ├── extractor.py           # json_extractor()      从响应提取变量
+│   │                          # jdbc_extractor()      从数据库提取变量
+│   └── allure_utils.py        # allure_test_report_init()  设置报告层级
 ├── run.py                     # 入口：执行用例 + 生成 Allure 报告
 ├── pytest.ini                 # 日志与 pytest 配置
 └── requirements.txt
 ```
+
+### 模块职责一览
+
+| 模块 | 核心函数 | 职责 |
+|---|---|---|
+| `test_runner.py` | `TestRunner.test_case()` | 总指挥，按顺序调用下面各模块 |
+| `excel_utils.py` | `read_excel()` | 把 Excel 读成 `list[dict]`，并按 `is_True` 过滤 |
+| `analyse_case.py` | `analyse_case()` | 拼 URL、`eval` 转换请求字段，返回 `request_data` |
+| `send_request.py` | `send_http_request()` | 发送 HTTP 请求，返回 `Response` |
+| | `send_jdbc_request()` | 连接 MySQL，执行 SQL，返回指定列的值 |
+| `asserts.py` | `http_assert()` | 用 JSONPath 取值与 `expected` 比对 |
+| | `jdbc_assert()` | 执行 `sql_check` 与 `sql_expected` 比对 |
+| `extractor.py` | `json_extractor()` | 从响应提取变量写入全局字典 `all` |
+| | `jdbc_extractor()` | 从数据库提取变量写入全局字典 `all` |
+| `allure_utils.py` | `allure_test_report_init()` | 设置报告的 feature / story / title |
 
 ---
 
@@ -123,17 +144,23 @@ pytest ./testcases/test_runner.py -vs
 
 ## 框架执行流程
 
-每条用例都会走完下面 5 步（见 `testcases/test_runner.py`）：
+每条用例都会走完下面 5 步（由 `testcases/test_runner.py` 编排）：
 
 ```
-渲染 case  →  解析请求参数  →  发送请求  →  断言  →  提取变量
+① 渲染 case  → ② 解析请求参数 → ③ 发送请求 → ④ 断言 → ⑤ 提取变量
+                      ↓              ↓          ↓          ↓
+              analyse_case.py  send_request.py  asserts.py  extractor.py
 ```
 
-1. **渲染**：`Template(str(case)).render(all)` 把 `{{TOKEN}}` 这类占位符替换成真实值
-2. **解析**：把 Excel 中读出的字符串（如 `'{"a": 1}'`）通过 `eval` 转成真正的 dict
-3. **发送**：`requests.request(**request_data)`
-4. **断言**：`jsonpath(res.json(), check)[0] == expected`，以及可选的 SQL 断言
-5. **提取**：把 token、新增记录 ID 等存进全局变量池 `all`，供后续用例使用
+| 步骤 | 代码位置 | 做了什么 |
+|---|---|---|
+| **① 渲染** | `test_runner.py` | `Template(str(case)).render(all)` 把 `{{TOKEN}}` 这类占位符替换成真实值 |
+| **② 解析** | `analyse_case()` | 拼接完整 URL；把 Excel 中的字符串（如 `'{"a": 1}'`）用 `eval` 转成 dict |
+| **③ 发送** | `send_http_request()` | `requests.request(**request_data)`，并把请求记录下来供 Allure 展示 |
+| **④ 断言** | `http_assert()` / `jdbc_assert()` | HTTP 用 `jsonpath(...)[0] == expected`；数据库用 SQL 查询结果比对 |
+| **⑤ 提取** | `json_extractor()` / `jdbc_extractor()` | 把 token、新增记录 ID 等写入全局字典 `all`，供后续用例使用 |
+
+每个工具函数都加了 `@allure.step`，所以在 Allure 报告中能看到「1.解析请求数据 → 2.发送http请求 → 3.http响应断言 → 4.json提取」的完整步骤链。
 
 ---
 
@@ -160,7 +187,7 @@ pytest ./testcases/test_runner.py -vs
 
 ## 注意事项
 
-1. **硬编码配置**：基地址、数据库连接信息目前写在 `test_runner.py` 中，正式使用建议改为配置文件或环境变量
+1. **硬编码配置**：基地址写在 `utils/analyse_case.py`，数据库连接信息写在 `utils/send_request.py`，正式使用建议改为配置文件或环境变量
 2. **用例依赖顺序**：变量通过全局字典传递，后置用例依赖前置用例的提取结果，不适合随机顺序执行
 3. **新增用户用例的可重复性**：接口对用户名有唯一性约束，重复执行会返回「用户名已存在」，建议用时间戳 / 随机数生成唯一用户名，或增加后置清理逻辑
 4. **`eval` 的使用**：为简化 Excel 字符串解析而使用 `eval`，仅适用于可信的本地用例文件
