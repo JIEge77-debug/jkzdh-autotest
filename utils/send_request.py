@@ -1,13 +1,8 @@
 import logging
-
 import allure
 import pymysql
 import requests
-
-
-from config.config import DB_HOST
-from config.config import *
-
+from config.config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
 @allure.step("2.发送http请求")
 def send_http_request(**request_data):

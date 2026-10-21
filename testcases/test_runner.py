@@ -1,6 +1,5 @@
 import pytest
 from jinja2 import Template
-from pip._internal.utils import logging
 import logging
 from utils.allure_utils import allure_test_report_init
 from utils.analyse_case import analyse_case
@@ -31,7 +30,7 @@ class TestRunner:
         allure_test_report_init(case)#意思是形参等于实参 case = case
 
         #0.测试用例的描述信息日志
-        logging.info(f"0.测试用例ID:{case["id"]}, 模块:{case["feature"]}, 场景:{case["story"]}, 标题:{case["title"]}")
+        logging.info(f"0.测试用例ID:{case['id']}, 模块:{case['feature']}, 场景:{case['story']}, 标题:{case['title']}")
         #case["id"],case["title"]
 
         #核心步骤1：解析请求数据

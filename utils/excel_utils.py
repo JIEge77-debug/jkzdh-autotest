@@ -24,7 +24,6 @@ def read_excel(file_path = EXCEL_FILE,sheet_name = SHEET_NAME):
         # data.append(dict_data)
     #关闭Excel文件
     workbook.close()
-
     return data
 
 read_excel()

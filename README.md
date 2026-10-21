@@ -14,6 +14,8 @@
 - **双通道提取**：支持从接口响应（JSONPath）和数据库（SQL）两种来源提取变量，供后续用例复用
 - **可视化报告**：接入 Allure，按 feature / story / title 三层组织报告
 - **按需执行**：Excel 中的 `is_True` 列控制某条用例是否参与执行
+- **配置集中化**：基地址、Excel 路径、数据库连接统一收敛到 `config/config.py`，换环境只改一处
+- **日志可追溯**：请求参数、响应文本、断言实际值与预期值、提取结果等关键节点全部落日志，失败可回看
 
 ---
 
@@ -28,6 +30,7 @@
 | jsonpath | 从 JSON 响应中提取字段 |
 | PyMySQL | 连接 MySQL 做数据库校验 |
 | allure-pytest | 生成可视化测试报告 |
+| logging（标准库） | 记录执行过程中的关键信息，落盘到 `log/test.log` |
 
 ---
 
@@ -35,6 +38,8 @@
 
 ```
 .
+├── config/
+│   └── config.py              # 全局配置：基地址 / Excel 路径 / 数据库连接
 ├── data/
 │   └── 测试用例.xlsx          # 测试用例（核心数据源）
 ├── file/
@@ -52,7 +57,7 @@
 │   │                          # jdbc_extractor()      从数据库提取变量
 │   └── allure_utils.py        # allure_test_report_init()  设置报告层级
 ├── run.py                     # 入口：执行用例 + 生成 Allure 报告
-├── pytest.ini                 # 日志与 pytest 配置
+├── pytest.ini                 # 日志格式与 pytest 配置
 └── requirements.txt
 ```
 
@@ -60,6 +65,7 @@
 
 | 模块 | 核心函数 | 职责 |
 |---|---|---|
+| `config/config.py` | —（常量模块） | 集中管理 BASE_URL / EXCEL_FILE / SHEET_NAME / DB_* 等配置 |
 | `test_runner.py` | `TestRunner.test_case()` | 总指挥，按顺序调用下面各模块 |
 | `excel_utils.py` | `read_excel()` | 把 Excel 读成 `list[dict]`，并按 `is_True` 过滤 |
 | `analyse_case.py` | `analyse_case()` | 拼 URL、`eval` 转换请求字段，返回 `request_data` |
@@ -78,7 +84,7 @@
 ### 1. 环境要求
 
 - Python 3.9+（开发环境为 3.13）
-- 被测服务可访问（默认 `http://192.168.10.131:8888`）
+- 被测服务可访问（地址在 `config/config.py` 中配置）
 - MySQL 5.7+（仅数据库断言 / 数据库提取需要）
 - Allure 命令行（仅生成 HTML 报告需要）
 
@@ -88,7 +94,25 @@
 pip install -r requirements.txt
 ```
 
-### 3. 执行测试
+### 3. 修改配置
+
+打开 `config/config.py`，按你的环境改这几项：
+
+```python
+BASE_URL     = "http://192.168.10.131:8888/api/private/v1"   # 被测服务基地址
+EXCEL_FILE   = "./data/测试用例.xlsx"                          # 用例文件路径
+SHEET_NAME   = "Sheet1"                                       # 工作表名
+
+DB_HOST      = "192.168.10.131"    # 数据库地址
+DB_PORT      = 3306
+DB_NAME      = "mydb"
+DB_USER      = "root"
+DB_PASSWORD  = "123456"
+```
+
+> 只做接口断言、不查数据库时，`DB_*` 这几项不会被用到。
+
+### 4. 执行测试
 
 ```bash
 python run.py
@@ -102,7 +126,7 @@ python run.py
 pytest ./testcases/test_runner.py -vs
 ```
 
-生成的报告位于 `report/html_report/index.html`。
+生成的报告位于 `report/html_report/index.html`，日志位于 `log/test.log`。
 
 ---
 
@@ -183,11 +207,52 @@ pytest ./testcases/test_runner.py -vs
 
 `utils/allure_utils.py` 利用 Excel 中的 `feature` / `story` / `title` 动态生成报告结构，报告可按模块、场景分层查看。
 
+报告中每条用例下会展开 4 个步骤（由各工具函数上的 `@allure.step` 产生）：
+
+```
+1.解析请求数据  →  2.发送http请求  →  3.http响应断言 / 3.jdbc响应断言  →  4.json提取 / 4.jdbc提取
+```
+
+---
+
+## 日志
+
+日志配置在 `pytest.ini` 中，使用 Python 标准库 `logging`，**同时输出到控制台和文件**：
+
+```ini
+log_file = ./log/test.log      # 落盘位置
+log_cli  = True                # 同时打印到控制台
+```
+
+各模块在关键节点记录日志：
+
+| 位置 | 记录内容 |
+|---|---|
+| `test_runner.py` | 用例 ID / 模块 / 场景 / 标题 |
+| `analyse_case.py` | 解析后的完整 `request_data` |
+| `send_request.py` | 响应文本 `res.text` |
+| `asserts.py` | 断言的实际值与预期值（HTTP 与 JDBC 各一条） |
+| `extractor.py` | 提取之后的全局变量 `all` |
+
+**日志格式**（`pytest.ini` 中配置）：
+
+```
+%(asctime)s %(filename)-20s[函数:%(funcName)-18s] [line:%(lineno)-3d]  %(levelname)s --%(message)s
+```
+
+输出示例：
+
+```
+2026-10-19 21:30:11,203 analyse_case.py     [函数:analyse_case    ] [line:37 ]  INFO --1.解析请求数据，请求数据为:{...}
+```
+
+> **排错思路**：先看 `log/test.log` 里断言那两条日志，能直接看到「实际值 vs 预期值」，比翻 Allure 报告快。
+
 ---
 
 ## 注意事项
 
-1. **硬编码配置**：基地址写在 `utils/analyse_case.py`，数据库连接信息写在 `utils/send_request.py`，正式使用建议改为配置文件或环境变量
+1. **配置中的凭据是明文**：`config/config.py` 里的 `DB_PASSWORD` 是明文，当前项目为私有仓库；若要公开或用于生产，建议改为从环境变量读取（`os.getenv("DB_PASSWORD")`）
 2. **用例依赖顺序**：变量通过全局字典传递，后置用例依赖前置用例的提取结果，不适合随机顺序执行
 3. **新增用户用例的可重复性**：接口对用户名有唯一性约束，重复执行会返回「用户名已存在」，建议用时间戳 / 随机数生成唯一用户名，或增加后置清理逻辑
 4. **`eval` 的使用**：为简化 Excel 字符串解析而使用 `eval`，仅适用于可信的本地用例文件
