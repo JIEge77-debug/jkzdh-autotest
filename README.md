@@ -39,7 +39,8 @@
 ```
 .
 ├── config/
-│   └── config.py              # 全局配置：基地址 / Excel 路径 / 数据库连接
+│   ├── config.example.py      # 配置模板（入库，含占位符）
+│   └── config.py              # 你的本地配置（已被 .gitignore 忽略，需自己复制）
 ├── data/
 │   └── 测试用例.xlsx          # 测试用例（核心数据源）
 ├── file/
@@ -65,7 +66,8 @@
 
 | 模块 | 核心函数 | 职责 |
 |---|---|---|
-| `config/config.py` | —（常量模块） | 集中管理 BASE_URL / EXCEL_FILE / SHEET_NAME / DB_* 等配置 |
+| `config/config.py` | —（常量模块） | 集中管理 BASE_URL / EXCEL_FILE / SHEET_NAME / DB_* 等配置（**本地文件，不入库**） |
+| `config/config.example.py` | —（模板） | 上面的配置模板，供使用者复制后填写自己的环境 |
 | `test_runner.py` | `TestRunner.test_case()` | 总指挥，按顺序调用下面各模块 |
 | `excel_utils.py` | `read_excel()` | 把 Excel 读成 `list[dict]`，并按 `is_True` 过滤 |
 | `analyse_case.py` | `analyse_case()` | 拼 URL、`eval` 转换请求字段，返回 `request_data` |
@@ -94,25 +96,39 @@
 pip install -r requirements.txt
 ```
 
-### 3. 修改配置
+### 3. 生成本地配置文件
+
+仓库里只有配置模板 `config/config.example.py`，先复制一份真正的配置文件（该文件已被 `.gitignore` 忽略，不会上传）：
+
+```bash
+# Windows
+copy config\config.example.py config\config.py
+
+# Mac / Linux
+cp config/config.example.py config/config.py
+```
+
+> 如果你是在本地开发（已经在写代码），`config/config.py` 应该已经存在，可跳过这一步。
+
+### 4. 修改配置
 
 打开 `config/config.py`，按你的环境改这几项：
 
 ```python
-BASE_URL     = "http://192.168.10.131:8888/api/private/v1"   # 被测服务基地址
-EXCEL_FILE   = "./data/测试用例.xlsx"                          # 用例文件路径
-SHEET_NAME   = "Sheet1"                                       # 工作表名
+BASE_URL     = "http://127.0.0.1:8888/api/private/v1"   # 被测服务基地址
+EXCEL_FILE   = "./data/测试用例.xlsx"                     # 用例文件路径
+SHEET_NAME   = "Sheet1"                                  # 工作表名
 
-DB_HOST      = "192.168.10.131"    # 数据库地址
+DB_HOST      = "127.0.0.1"    # 数据库地址
 DB_PORT      = 3306
 DB_NAME      = "mydb"
 DB_USER      = "root"
-DB_PASSWORD  = "123456"
+DB_PASSWORD  = "your_password"
 ```
 
 > 只做接口断言、不查数据库时，`DB_*` 这几项不会被用到。
 
-### 4. 执行测试
+### 5. 执行测试
 
 ```bash
 python run.py
@@ -252,7 +268,7 @@ log_cli  = True                # 同时打印到控制台
 
 ## 注意事项
 
-1. **配置中的凭据是明文**：`config/config.py` 里的 `DB_PASSWORD` 是明文，当前项目为私有仓库；若要公开或用于生产，建议改为从环境变量读取（`os.getenv("DB_PASSWORD")`）
+1. **本地配置不入库**：真实地址与数据库密码放在 `config/config.py`，该文件已加入 `.gitignore`；仓库里只保留模板 `config/config.example.py`。首次使用请按「快速开始」第 3 步复制模板。若需更高安全性，可进一步改为环境变量读取（`os.getenv("DB_PASSWORD")`）
 2. **用例依赖顺序**：变量通过全局字典传递，后置用例依赖前置用例的提取结果，不适合随机顺序执行
 3. **新增用户用例的可重复性**：接口对用户名有唯一性约束，重复执行会返回「用户名已存在」，建议用时间戳 / 随机数生成唯一用户名，或增加后置清理逻辑
 4. **`eval` 的使用**：为简化 Excel 字符串解析而使用 `eval`，仅适用于可信的本地用例文件

@@ -33,6 +33,9 @@ venv/
 .venv/
 env/
 
+# ===== 本地配置（含真实服务器地址与数据库密码，不要提交）=====
+config/config.py
+
 # ===== 系统垃圾文件 =====
 .DS_Store
 Thumbs.db
