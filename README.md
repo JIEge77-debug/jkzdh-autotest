@@ -8,14 +8,15 @@
 
 ## 功能特性
 
-- **数据驱动**：测试用例写在 `data/测试用例.xlsx`，代码只负责执行，加用例不改代码
+- **数据驱动**：测试用例写在 `data/测试用例完整版.xlsx`，代码只负责执行，加用例不改代码
 - **变量传递**：基于 Jinja2 模板 + 全局变量池，实现登录 token、新增记录 ID 等动态参数跨用例传递
 - **双维度断言**：支持 HTTP 响应断言（JSONPath 取字段比对）与数据库断言（SQL 查询比对）
 - **双通道提取**：支持从接口响应（JSONPath）和数据库（SQL）两种来源提取变量，供后续用例复用
 - **可视化报告**：接入 Allure，按 feature / story / title 三层组织报告
-- **按需执行**：Excel 中的 `is_True` 列控制某条用例是否参与执行
-- **配置集中化**：基地址、Excel 路径、数据库连接统一收敛到 `config/config.py`，换环境只改一处
+- **按需执行**：Excel 中的 `is_true` 列控制某条用例是否参与执行
+- **配置集中化**：基地址、Excel 路径、数据库连接、清理 SQL 统一收敛到 `config/config.py`，换环境只改一处
 - **日志可追溯**：请求参数、响应文本、断言实际值与预期值、提取结果等关键节点全部落日志，失败可回看
+- **数据自动清理**：`conftest.py` 夹具在测试前后各清一次测试数据，解决「软删除记录占用唯一键」导致的重复执行失败
 
 ---
 
@@ -39,10 +40,10 @@
 ```
 .
 ├── config/
-│   ├── config.example.py      # 配置模板（入库，含占位符）
+│   ├── config.example.py      # 配置模板（入库，含占位符与清理 SQL）
 │   └── config.py              # 你的本地配置（已被 .gitignore 忽略，需自己复制）
 ├── data/
-│   └── 测试用例.xlsx          # 测试用例（核心数据源）
+│   └── 测试用例完整版.xlsx      # 测试用例（核心数据源）
 ├── file/
 │   └── banana.jpg             # 文件上传用例的测试素材
 ├── testcases/
@@ -57,6 +58,7 @@
 │   ├── extractor.py           # json_extractor()      从响应提取变量
 │   │                          # jdbc_extractor()      从数据库提取变量
 │   └── allure_utils.py        # allure_test_report_init()  设置报告层级
+├── conftest.py                # pytest 全局夹具：测试前后清理测试数据
 ├── run.py                     # 入口：执行用例 + 生成 Allure 报告
 ├── pytest.ini                 # 日志格式与 pytest 配置
 └── requirements.txt
@@ -66,10 +68,11 @@
 
 | 模块 | 核心函数 | 职责 |
 |---|---|---|
-| `config/config.py` | —（常量模块） | 集中管理 BASE_URL / EXCEL_FILE / SHEET_NAME / DB_* 等配置（**本地文件，不入库**） |
+| `config/config.py` | —（常量模块） | 集中管理 BASE_URL / EXCEL_FILE / SHEET_NAME / DB_* / SQL1~SQL3（**本地文件，不入库**） |
 | `config/config.example.py` | —（模板） | 上面的配置模板，供使用者复制后填写自己的环境 |
+| `conftest.py` | `destroy_data()`（fixture） | session 级 autouse 夹具，测试开始前与结束后各执行一次清理 SQL |
 | `test_runner.py` | `TestRunner.test_case()` | 总指挥，按顺序调用下面各模块 |
-| `excel_utils.py` | `read_excel()` | 把 Excel 读成 `list[dict]`，并按 `is_True` 过滤 |
+| `excel_utils.py` | `read_excel()` | 把 Excel 读成 `list[dict]`，并按 `is_true` 过滤 |
 | `analyse_case.py` | `analyse_case()` | 拼 URL、`eval` 转换请求字段，返回 `request_data` |
 | `send_request.py` | `send_http_request()` | 发送 HTTP 请求，返回 `Response` |
 | | `send_jdbc_request()` | 连接 MySQL，执行 SQL，返回指定列的值 |
@@ -116,7 +119,7 @@ cp config/config.example.py config/config.py
 
 ```python
 BASE_URL     = "http://127.0.0.1:8888/api/private/v1"   # 被测服务基地址
-EXCEL_FILE   = "./data/测试用例.xlsx"                     # 用例文件路径
+EXCEL_FILE   = "./data/测试用例完整版.xlsx"                # 用例文件路径
 SHEET_NAME   = "Sheet1"                                  # 工作表名
 
 DB_HOST      = "127.0.0.1"    # 数据库地址
@@ -124,9 +127,14 @@ DB_PORT      = 3306
 DB_NAME      = "mydb"
 DB_USER      = "root"
 DB_PASSWORD  = "your_password"
+
+# 测试数据清理 SQL（由 conftest.py 在测试前后各执行一次）
+SQL1 = "DELETE FROM sp_category WHERE cat_name = '大码服装'"
+SQL2 = "DELETE FROM sp_attribute WHERE attr_name = 'VIP尺码'"
+SQL3 = "DELETE FROM sp_goods WHERE goods_name LIKE '大码牛仔裤%'"
 ```
 
-> 只做接口断言、不查数据库时，`DB_*` 这几项不会被用到。
+> 只做接口断言、不查数据库时，`DB_*` 与 `SQL1~SQL3` 这几项不会被用到（但变量必须存在，否则 `conftest.py` 导入会失败）。
 
 ### 5. 执行测试
 
@@ -148,7 +156,7 @@ pytest ./testcases/test_runner.py -vs
 
 ## 测试用例设计
 
-用例写在 `data/测试用例.xlsx` 的 `Sheet1` 中：
+用例写在 `data/测试用例完整版.xlsx` 的 `Sheet1` 中：
 
 - **第 1 行**：中文表头（供人阅读）
 - **第 2 行**：英文字段名（供代码读取）
@@ -167,18 +175,28 @@ pytest ./testcases/test_runner.py -vs
 | `sql_check` / `sql_expected` | 数据库断言的 SQL 语句与期望结果 |
 | `jsonExData` | 从响应提取变量，格式如 `{"TOKEN":"$..token"}` |
 | `sqlExData` | 从数据库提取变量，格式如 `{"ADMIN_NAME":"select ..."}` |
-| `is_True` | 是否执行该用例（TRUE 才执行） |
+| `is_true` | 是否执行该用例（TRUE 才执行） |
+
+> ⚠️ 字段名区分大小写：代码里读的是 `is_true`（小写 t），Excel 第 2 行必须与之一致，否则会抛 `KeyError`。
 
 ### 当前用例清单
 
-| ID | 方法 | 路径 | 场景 | 默认执行 |
-|---|---|---|---|---|
-| 1 | POST | /login | 管理员登录成功 | ✅ |
-| 2 | GET | /users | 未登录，查询用户列表失败 | ✅ |
-| 3 | GET | /users | 携带 token，查询用户列表成功 | ✅ |
-| 4 | POST | /users | 添加用户 | — |
-| 5 | PUT | /users/{{BOY_ID}}/state/true | 修改用户状态 | — |
-| 6 | POST | /upload | 图片上传 | — |
+共 **44 条**用例，其中 **38 条**默认执行：
+
+| 模块（feature） | 总条数 | 执行条数 | id 范围 |
+|---|---:|---:|---|
+| 登录 | 2 | 1 | 1 ~ 100 |
+| 用户管理 | 11 | 7 | 2 ~ 108 |
+| 权限管理 | 2 | 2 | 109 ~ 110 |
+| 角色管理 | 7 | 7 | 106 ~ 116 |
+| 商品分类管理 | 5 | 5 | 117 ~ 121 |
+| 分类参数管理 | 5 | 5 | 122 ~ 126 |
+| 商品管理 | 5 | 5 | 127 ~ 131 |
+| 图片上传 | 2 | 1 | 6 ~ 132 |
+| 订单管理 | 4 | 4 | 133 ~ 136 |
+| 数据统计 | 1 | 1 | 137 |
+
+**跑完一轮实测：38 passed**（约 13 秒）。
 
 ---
 
@@ -266,11 +284,73 @@ log_cli  = True                # 同时打印到控制台
 
 ---
 
+## 测试数据清理
+
+由 `conftest.py` 里的 `destroy_data` 夹具负责，**session 级 autouse**，无需在用例里显式声明。
+
+### 为什么需要清理
+
+接口的「删除」操作大多是**软删除**（只把 `is_del` / `cat_deleted` 置 1），记录**仍留在表里**。而 `sp_goods` 表对 `goods_name` 有唯一约束：
+
+```sql
+UNIQUE KEY `goods_name` (`goods_name`)
+```
+
+于是出现这样的死循环：
+
+```
+第 1 轮：创建商品「大码牛仔裤」→ 成功 → 用例结束删除（软删除）
+第 2 轮：再创建同名商品 → 撞唯一约束 → 「创建商品基本信息失败」
+```
+
+**不清理的话，测试只能跑一次。**
+
+### 怎么做的
+
+```python
+@pytest.fixture(scope="session", autouse=True)
+def destroy_data():
+    _destroy()      # setup：测试开始前先清一次，保证从干净数据起步
+    yield
+    _destroy()      # teardown：测试结束后再清一次，留给下一轮干净环境
+```
+
+`_destroy()` 从 `config/config.py` 读取 `SQL1` / `SQL2` / `SQL3` 依次执行，连接使用 `autocommit=True`。
+
+### 清理 SQL 的写法要点
+
+```python
+SQL1 = "DELETE FROM sp_category WHERE cat_name = '大码服装'"
+SQL2 = "DELETE FROM sp_attribute WHERE attr_name = 'VIP尺码'"
+SQL3 = "DELETE FROM sp_goods WHERE goods_name LIKE '大码牛仔裤%'"   # ← 注意用 LIKE
+```
+
+**`SQL3` 为什么用 `LIKE '前缀%'` 而不是 `=`？**
+
+因为同一条商品链路里会出现两个名字：
+
+| 用例 | 操作 | 商品名 |
+|---|---|---|
+| `id=128` 添加商品 | POST | `大码牛仔裤` |
+| `id=130` 编辑商品 | PUT | `大码牛仔裤+` |
+
+用 `=` 只能删掉一个，剩下的仍会占着唯一键。**`LIKE '大码牛仔裤%'` 一次覆盖两个。**
+
+### 注意事项
+
+| 事项 | 说明 |
+|---|---|
+| **文件名必须是 `conftest.py`** | 其他名字（如 `configtest.py`）pytest 不会自动加载，夹具不生效 |
+| **SQL 里的名字要与 Excel 用例一致** | 用例改名后，`config.py` 里的清理 SQL 也要同步改 |
+| **`SQL1~SQL3` 变量必须存在于 `config.py`** | 否则 `conftest.py` 导入时报 `ImportError`，一条用例都跑不了 |
+
+---
+
 ## 注意事项
 
 1. **本地配置不入库**：真实地址与数据库密码放在 `config/config.py`，该文件已加入 `.gitignore`；仓库里只保留模板 `config/config.example.py`。首次使用请按「快速开始」第 3 步复制模板。若需更高安全性，可进一步改为环境变量读取（`os.getenv("DB_PASSWORD")`）
 2. **用例依赖顺序**：变量通过全局字典传递，后置用例依赖前置用例的提取结果，不适合随机顺序执行
-3. **新增用户用例的可重复性**：接口对用户名有唯一性约束，重复执行会返回「用户名已存在」，建议用时间戳 / 随机数生成唯一用户名，或增加后置清理逻辑
+3. **测试数据的可重复性**：接口对用户名、商品名等字段有唯一性约束，且「删除」多为软删除（记录仍在表内、唯一键仍被占用）。本项目通过 `conftest.py` 夹具在测试前后清理（见「测试数据清理」章节）；新增涉及唯一字段的用例时，记得同步补充 `config/config.py` 里的清理 SQL
 4. **`eval` 的使用**：为简化 Excel 字符串解析而使用 `eval`，仅适用于可信的本地用例文件
 
 ---

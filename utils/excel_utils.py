@@ -19,7 +19,7 @@ def read_excel(file_path = EXCEL_FILE,sheet_name = SHEET_NAME):
         dict_data = dict(zip(key, row))
         #如果读取的 is_true 字段的值是TRUE，则append，否则不append
         # print(dict_data["is_True"])
-        if dict_data["is_True"]:
+        if dict_data["is_true"]:
             data.append(dict_data)
         # data.append(dict_data)
     #关闭Excel文件
