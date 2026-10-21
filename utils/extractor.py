@@ -1,3 +1,5 @@
+import logging
+
 import allure
 import jsonpath
 
@@ -12,6 +14,7 @@ def json_extractor(case,all,res):
             for key, value in eval(case["jsonExData"]).items():
                 value = jsonpath.jsonpath(res.json(), value)[0]
                 all[key] = value
+            logging.info(f"4.json提取,根据{case["jsonExData"]}提取数据，此时全局变量为:{all}")
 
 
 
@@ -21,3 +24,4 @@ def jdbc_extractor(case,all):
             for key, value in eval(case["sqlExData"]).items():
                 value = send_jdbc_request(value)
                 all[key] = value
+            logging.info(f"4.JDBC提取,根据{case["sqlExData"]}提取数据，此时全局变量为:{all}")

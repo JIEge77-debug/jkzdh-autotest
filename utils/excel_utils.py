@@ -1,12 +1,15 @@
 import openpyxl
 
-def read_excel():
+from config.config import EXCEL_FILE, SHEET_NAME
+
+
+def read_excel(file_path = EXCEL_FILE,sheet_name = SHEET_NAME):
 
     #打开Excel文件
-    workbook = openpyxl.load_workbook("./data/测试用例.xlsx") #参数文件路径
+    workbook = openpyxl.load_workbook(file_path) #参数文件路径
 
     #选择表
-    worksheet = workbook["Sheet1"] #表名严格区分大小写，文件里的表名是 Sheet1
+    worksheet = workbook[sheet_name] #表名严格区分大小写，文件里的表名是 Sheet1
     # 也可以不写死表名，直接取第一个表：
     # worksheet = workbook[workbook.sheetnames[0]]
     #读数据操作 zip() 函数的作用是将多个可迭代对象中的元素按顺序组合成一个元组

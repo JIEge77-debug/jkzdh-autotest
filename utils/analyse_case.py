@@ -1,4 +1,8 @@
+import logging
+
 import allure
+
+from config.config import BASE_URL
 
 
 @allure.step("1.解析请求数据")
@@ -11,7 +15,7 @@ def analyse_case(case):
     """
 
     method = case["method"]
-    url = "http://192.168.10.131:8888/api/private/v1" + case["path"]  # path是最后的后缀
+    url = BASE_URL + case["path"]  # path是最后的后缀
     headers = eval(case["headers"]) if isinstance(case["headers"], str) else None
     params = eval(case["params"]) if isinstance(case["params"], str) else None
     data = eval(case["data"]) if isinstance(case["data"], str) else None
@@ -30,5 +34,6 @@ def analyse_case(case):
 
     }
 
+    logging.info(f"1.解析请求数据，请求数据为:{request_data}")
     #需要返回值
     return request_data
